@@ -1,34 +1,43 @@
-from google.appengine.ext import ndb
-from webapp2_extras import json
 from google.appengine.api import users
+from google.appengine.ext import ndb
 from google.appengine.ext.webapp.util import login_required
+from webapp2_extras import json
 import cgi
-import urllib
 import jinja2
 import os
+import urllib
 import webapp2
 
-
 JINJA_ENVIRONMENT = jinja2.Environment(
+
   loader=jinja2.FileSystemLoader(os.path.dirname(__file__)),
   extensions=['jinja2.ext.autoescape'],
   autoescape=True)
-  
+
+
+
 class Greet(webapp2.RequestHandler):
-		@login_required
-		def get(self):
-			user = users.get_current_user()
-            template = JINJA_ENVIRONMENT.get_template('index.html')
-			 params = {
+    @login_required
+    def get(self):
+     template = JINJA_ENVIRONMENT.get_template('index.html')
+
+     for owner in DogOwner.query(DogOwner.email == users.get_current_user().email()):
+            params['nickname'] = owner.name
+            template = JINJA_ENVIRONMENT.get_template('owner.html')
+
+     for walker in DogWalker.query(DogWalker.email == users.get_current_user().email()):
+            params['nickname'] = walker.name
+            template = JINJA_ENVIRONMENT.get_template('walker.html')
+
+     user = users.get_current_user()
+     params = {
           'nickname': user.nickname()
      }
      self.response.write(template.render(params))
 
-
-
-
 class DogWalker(ndb.Model):
     name = ndb.StringProperty()
+    email = ndb.StringProperty()
     def to_json(self):
         return {
             'id': self.key.id(),
@@ -37,6 +46,7 @@ class DogWalker(ndb.Model):
 
 class DogOwner(ndb.Model):
     name = ndb.StringProperty()
+    email = ndb.StringProperty()
     def to_json(self):
         return {
             'id': self.key.id(),
@@ -57,15 +67,17 @@ class WalkRequest(ndb.Model):
 
 class CreateOwner(webapp2.RequestHandler):
     def post(self):
+        user = users.get_current_user()
         requested_name = self.request.get('name')
-        owner = DogOwner(name=requested_name)
+        owner = DogOwner(email=user.email(),name=requested_name)
         owner.put()
         return self.response.out.write(owner.key.id())
 
 class CreateWalker(webapp2.RequestHandler):
     def post(self):
+        user = users.get_current_user()
         requested_name = self.request.get('name')
-        walker = DogWalker(name=requested_name)
+        walker = DogWalker(email=user.email(),name=requested_name)
         walker.put()
         return self.response.out.write(walker.key.id())
 
@@ -87,12 +99,18 @@ class DeleteRequest(webapp2.RequestHandler):
 
 
 class GetAllData(webapp2.RequestHandler):
+    @login_required
     def get(self):
+        walkers = DogWalker.query(DogOwner.email == users.get_current_user().email())
+        id = None
+        for account in walkers:
+          id = account.key.id()
         self.response.headers['Content-Type'] = 'application/json'
         data = {
             'owners': [owner.to_json() for owner in DogOwner.query()],
             'walkers': [walker.to_json() for walker in DogWalker.query()],
             'requests': [request.to_json() for request in WalkRequest.query()],
+            'user_id': id,
         }
         return self.response.out.write(json.encode(data))
 
